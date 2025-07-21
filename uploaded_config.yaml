@@ -1,0 +1,44 @@
+source_db:
+  user: source_user
+  password: source_pass
+  dsn: source_host:1521/sourcedb
+target_db:
+  user: target_user
+  password: target_pass
+  dsn: target_host:1521/targetdb
+
+table_config:
+  - table_name: "EMPLOYEES"
+    schema: "HR"
+    primary_key: ["EMPLOYEE_ID"]
+    chunk_size: 10000
+    # columns: null
+    # where_clause: null
+  - table_name: "ORDER_ITEMS"
+    schema: "SALES"
+    primary_key: ["ORDER_ID", "ITEM_ID"]
+    chunk_size: 5000
+    columns: ["ORDER_ID", "ITEM_ID", "QUANTITY", "PRICE", "STATUS"]
+  - table_name: "TRANSACTIONS"
+    schema: "FIN"
+    primary_key: ["TRANSACTION_ID"]
+    chunk_size: 15000
+    where_clause: "TRANSACTION_DATE >= DATE '2024-01-01'"
+  - table_name: "AUDIT_LOG"
+    schema: "AUDIT"
+    primary_key: ["LOG_ID"]
+    chunk_size: 2000
+    columns: ["LOG_ID", "USER_ID", "ACTION", "TIMESTAMP", "STATUS"]
+    where_clause: "STATUS = 'ACTIVE'"
+
+exclude_columns: ["LAST_UPDATED"]
+
+paths:
+  audit_log: ./logs/audit.log
+  source_sql_output: ./output/source_sync_statements.sql
+  target_sql_output: ./output/target_sync_statements.sql
+
+flags:
+  enable_audit_table: false
+  enable_reverification: fasle
+  enable_restart: false 
