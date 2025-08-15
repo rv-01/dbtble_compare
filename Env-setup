@@ -1,0 +1,301 @@
+#!/bin/bash
+
+# Quick Setup Script for DB Sentinel in Stress Environment
+
+# This script provides a faster, simplified installation for testing
+
+set -e
+
+# Colors
+
+GREEN=’\033[0;32m’
+YELLOW=’\033[1;33m’
+RED=’\033[0;31m’
+NC=’\033[0m’
+
+echo -e “${GREEN}🚀 DB Sentinel Stress Environment Setup${NC}”
+echo “================================================”
+
+# Check if we’re in the right directory
+
+if [[ ! -f “DB_Sentinel_utility_refreshed.py” ]]; then
+echo -e “${RED}❌ Error: DB Sentinel files not found in current directory${NC}”
+echo “Please ensure all .py files are in the current directory and run again.”
+exit 1
+fi
+
+# Step 1: Create simple working directory
+
+echo -e “${GREEN}📁 Setting up working directory…${NC}”
+WORK_DIR=”$HOME/db_sentinel_stress”
+mkdir -p $WORK_DIR
+cp *.py $WORK_DIR/
+cp config.yaml $WORK_DIR/ 2>/dev/null || cp config_template.yaml $WORK_DIR/config.yaml
+
+cd $WORK_DIR
+echo “Working directory: $WORK_DIR”
+
+# Step 2: Check Python and install packages
+
+echo -e “${GREEN}🐍 Setting up Python environment…${NC}”
+if ! command -v python3 &> /dev/null; then
+echo -e “${RED}❌ Python 3 not found. Please install Python 3.8+${NC}”
+exit 1
+fi
+
+# Create virtual environment
+
+python3 -m venv venv
+source venv/bin/activate
+
+# Install required packages
+
+echo “Installing Python packages…”
+pip install –quiet oracledb pandas tqdm pyyaml
+
+echo -e “${GREEN}✅ Python environment ready${NC}”
+
+# Step 3: Configure environment variables
+
+echo -e “${GREEN}🔐 Setting up database credentials…${NC}”
+echo “”
+echo “Please provide your database connection details:”
+echo “”
+
+read -p “Source DB hostname: “ SOURCE_HOST
+read -p “Source DB service name: “ SOURCE_SERVICE
+read -p “Source DB username: “ SOURCE_USER
+read -s -p “Source DB password: “ SOURCE_PASS
+echo “”
+
+read -p “Target DB hostname: “ TARGET_HOST
+read -p “Target DB service name: “ TARGET_SERVICE
+read -p “Target DB username: “ TARGET_USER
+read -s -p “Target DB password: “ TARGET_PASS
+echo “”
+
+# Create environment file
+
+cat > .env << EOF
+
+# DB Sentinel Environment Variables for Stress Testing
+
+export DB_SENTINEL_SOURCE_PASSWORD=’$SOURCE_PASS’
+export DB_SENTINEL_TARGET_PASSWORD=’$TARGET_PASS’
+EOF
+
+chmod 600 .env
+
+# Step 4: Update configuration file
+
+echo -e “${GREEN}⚙️  Updating configuration…${NC}”
+
+# Create a simple config for stress testing
+
+cat > config.yaml << EOF
+
+# DB Sentinel Configuration for Stress Environment
+
+databases:
+source:
+host: “$SOURCE_HOST”
+port: 1521
+service_name: “$SOURCE_SERVICE”
+username: “$SOURCE_USER”
+password: “${DB_SENTINEL_SOURCE_PASSWORD}”
+connect_timeout: 60
+query_timeout: 600
+
+target:
+host: “$TARGET_HOST”
+port: 1521
+service_name: “$TARGET_SERVICE”
+username: “$TARGET_USER”
+password: “${DB_SENTINEL_TARGET_PASSWORD}”
+connect_timeout: 60
+query_timeout: 600
+
+tables:
+
+# ADD YOUR TABLES HERE - Example:
+
+# - name: “your_table_name”
+
+# schema: “your_schema”
+
+# primary_keys: [“id”]
+
+# exclude_columns: [“last_updated”]
+
+comparison:
+batch_size: 5000
+max_workers: 2
+enable_parallel_processing: true
+include_virtual_columns: false
+include_hidden_columns: false
+
+logging:
+level: “INFO”
+file_logging: true
+console_logging: true
+
+checkpoint:
+enabled: true
+schema: “public”
+
+verification:
+enabled: true
+
+misc:
+environment: “stress”
+debug_mode: false
+EOF
+
+echo -e “${GREEN}✅ Configuration file created${NC}”
+
+# Step 5: Create helper scripts
+
+echo -e “${GREEN}📝 Creating helper scripts…${NC}”
+
+# Create run script
+
+cat > run_comparison.sh << ‘EOF’
+#!/bin/bash
+
+# Quick run script for DB Sentinel
+
+cd “$( dirname “${BASH_SOURCE[0]}” )”
+source .env
+source venv/bin/activate
+
+echo “🚀 Starting DB Sentinel comparison…”
+python DB_Sentinel_utility_refreshed.py
+
+echo “”
+echo “📊 Checking results…”
+if [[ -d “DB_Sentinel_report” ]]; then
+echo “✅ Reports generated:”
+ls -la DB_Sentinel_report/
+fi
+
+if [[ -d “DB_Sentinel_sql” ]]; then
+echo “✅ SQL files generated:”
+ls -la DB_Sentinel_sql/
+fi
+EOF
+
+# Create test script
+
+cat > test_connection.sh << ‘EOF’
+#!/bin/bash
+
+# Test database connectivity
+
+cd “$( dirname “${BASH_SOURCE[0]}” )”
+source .env
+source venv/bin/activate
+
+echo “🔍 Testing database connections…”
+python test_parameter_binding.py
+EOF
+
+# Create config editor helper
+
+cat > edit_config.sh << ‘EOF’
+#!/bin/bash
+
+# Edit configuration file
+
+cd “$( dirname “${BASH_SOURCE[0]}” )”
+
+echo “📝 Opening configuration file…”
+echo “Add your tables in the ‘tables:’ section”
+echo “Press Ctrl+X, then Y, then Enter to save in nano”
+echo “”
+read -p “Press Enter to continue…”
+
+nano config.yaml
+EOF
+
+chmod +x *.sh
+
+# Step 6: Test connectivity
+
+echo -e “${GREEN}🔍 Testing database connectivity…${NC}”
+source .env
+
+# Quick connectivity test
+
+if python3 -c “
+import sys
+sys.path.insert(0, ‘.’)
+import os
+import oracledb
+
+# Test source connection
+
+try:
+conn = oracledb.connect(
+user=’$SOURCE_USER’,
+password=’$SOURCE_PASS’,
+dsn=’$SOURCE_HOST:1521/$SOURCE_SERVICE’
+)
+print(‘✅ Source database connection successful’)
+conn.close()
+except Exception as e:
+print(f’❌ Source database connection failed: {e}’)
+sys.exit(1)
+
+# Test target connection
+
+try:
+conn = oracledb.connect(
+user=’$TARGET_USER’,
+password=’$TARGET_PASS’,
+dsn=’$TARGET_HOST:1521/$TARGET_SERVICE’
+)
+print(‘✅ Target database connection successful’)
+conn.close()
+except Exception as e:
+print(f’❌ Target database connection failed: {e}’)
+sys.exit(1)
+“; then
+echo -e “${GREEN}✅ Database connectivity test passed!${NC}”
+else
+echo -e “${YELLOW}⚠️  Database connectivity test failed${NC}”
+echo “Please check your database details and network connectivity”
+fi
+
+# Final instructions
+
+echo “”
+echo -e “${GREEN}🎉 Setup Complete!${NC}”
+echo “================================================”
+echo “”
+echo “📍 Installation location: $WORK_DIR”
+echo “”
+echo “📋 Next steps:”
+echo “1. Edit configuration to add your tables:”
+echo “   ./edit_config.sh”
+echo “”
+echo “2. Test connectivity:”
+echo “   ./test_connection.sh”
+echo “”
+echo “3. Run your first comparison:”
+echo “   ./run_comparison.sh”
+echo “”
+echo “📁 Important files:”
+echo “   config.yaml     - Main configuration”
+echo “   .env           - Database passwords (secure)”
+echo “   run_comparison.sh - Run comparisons”
+echo “   test_connection.sh - Test connectivity”
+echo “   edit_config.sh - Edit configuration”
+echo “”
+echo “📊 Output directories (created after first run):”
+echo “   DB_Sentinel_report/ - Comparison reports”
+echo “   DB_Sentinel_sql/    - Generated SQL files”
+echo “   DB_Sentinel_audit/  - Audit logs”
+echo “”
+echo -e “${YELLOW}⚠️  Remember to update config.yaml with your table details!${NC}”
+echo “”
+EOF
