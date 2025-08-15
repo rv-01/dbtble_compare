@@ -1,0 +1,471 @@
+# DB Sentinel - Complete Linux Installation Guide
+
+## 🚀 Step-by-Step Installation for Linux Server
+
+### **Prerequisites Check**
+
+```bash
+# 1. Check your Linux version
+cat /etc/os-release
+
+# 2. Check Python version (need 3.8+)
+python3 --version
+
+# 3. Check if you have sudo access
+sudo -v
+
+# 4. Check available disk space (need ~2GB)
+df -h /
+
+# 5. Check network connectivity to your Oracle databases
+telnet your-source-db-host 1521
+telnet your-target-db-host 1521
+```
+
+-----
+
+## **STEP 1: Download and Prepare Files**
+
+### **1.1 Create Working Directory**
+
+```bash
+# Create a working directory
+mkdir -p ~/db_sentinel_install
+cd ~/db_sentinel_install
+
+# Download or copy all the Python files here
+# You should have these files:
+ls -la
+# Expected files:
+# - DB_Sentinel_utility_refreshed.py
+# - config_handler.py
+# - db_manager.py
+# - comparison_engine.py
+# - sql_generator.py
+# - report_generator.py
+# - audit_logger.py
+# - checkpoint_manager.py
+# - config.yaml
+# - deploy_db_sentinel.sh
+# - test_parameter_binding.py
+```
+
+### **1.2 Make Scripts Executable**
+
+```bash
+chmod +x deploy_db_sentinel.sh
+chmod +x *.py
+```
+
+-----
+
+## **STEP 2: Run Automated Installation**
+
+### **2.1 Execute Installation Script**
+
+```bash
+# Run the automated installer
+./deploy_db_sentinel.sh
+```
+
+**The script will:**
+
+- ✅ Check system requirements
+- ✅ Create dedicated user (`dbsentinel`)
+- ✅ Setup application directory (`/opt/db_sentinel`)
+- ✅ Install Python dependencies
+- ✅ Copy application files
+- ✅ Setup secure environment variables
+- ✅ Create systemd service
+- ✅ Configure log rotation
+
+### **2.2 During Installation - Password Setup**
+
+When prompted, enter your database passwords:
+
+```bash
+Source database password: [enter your source DB password]
+Target database password: [enter your target DB password]
+Audit database password: [press Enter to skip if not using]
+```
+
+**🔒 Security Note:** Passwords are stored securely in environment variables, not in plain text files.
+
+-----
+
+## **STEP 3: Configure Your Database Settings**
+
+### **3.1 Edit Main Configuration File**
+
+```bash
+# Edit the configuration file
+sudo nano /opt/db_sentinel/config.yaml
+```
+
+### **3.2 Update Database Connection Settings**
+
+```yaml
+# =============================================================================
+# DATABASE CONNECTIONS - UPDATE THESE WITH YOUR DETAILS
+# =============================================================================
+databases:
+  # Source database configuration
+  source:
+    host: "your-source-db-hostname"          # ← CHANGE THIS
+    port: 1521                               # ← CHANGE IF DIFFERENT
+    service_name: "YOUR_SOURCE_SERVICE"      # ← CHANGE THIS
+    username: "your_db_username"             # ← CHANGE THIS
+    password: "${DB_SENTINEL_SOURCE_PASSWORD}"  # ← LEAVE AS IS (secure)
+    
+  # Target database configuration  
+  target:
+    host: "your-target-db-hostname"          # ← CHANGE THIS
+    port: 1521                               # ← CHANGE IF DIFFERENT
+    service_name: "YOUR_TARGET_SERVICE"      # ← CHANGE THIS
+    username: "your_db_username"             # ← CHANGE THIS
+    password: "${DB_SENTINEL_TARGET_PASSWORD}"  # ← LEAVE AS IS (secure)
+```
+
+### **3.3 Configure Tables to Compare**
+
+```yaml
+# =============================================================================
+# TABLES TO COMPARE - UPDATE WITH YOUR TABLES
+# =============================================================================
+tables:
+  # Example 1: Simple table
+  - name: "your_table_name"                  # ← CHANGE THIS
+    schema: "your_schema_name"               # ← CHANGE THIS
+    primary_keys: ["id"]                     # ← CHANGE IF DIFFERENT
+    exclude_columns: ["last_updated", "created_by"]  # ← OPTIONAL
+    
+  # Example 2: Another table
+  - name: "another_table"                    # ← ADD YOUR TABLES
+    schema: "your_schema_name"               
+    primary_keys: ["customer_id"]            
+    exclude_columns: []
+    
+  # Add more tables as needed...
+```
+
+### **3.4 Configure Performance Settings (Optional)**
+
+```yaml
+# =============================================================================
+# PERFORMANCE SETTINGS - ADJUST FOR YOUR ENVIRONMENT
+# =============================================================================
+comparison:
+  batch_size: 10000          # Reduce to 5000 for slower systems
+  max_workers: 2             # Reduce to 1 for stress environment
+  enable_parallel_processing: true
+```
+
+-----
+
+## **STEP 4: Test Database Connectivity**
+
+### **4.1 Run Connectivity Test**
+
+```bash
+# Test database connections
+sudo -u dbsentinel /opt/db_sentinel/health_check.sh
+```
+
+**Expected Output:**
+
+```
+🔍 Testing SOURCE database...
+✅ Connected to source database successfully
+🔍 Testing TARGET database...  
+✅ Connected to target database successfully
+🎉 ALL TESTS PASSED - Parameter binding is working correctly!
+```
+
+### **4.2 If Connection Fails**
+
+```bash
+# Check the detailed logs
+sudo journalctl -u db-sentinel -f
+
+# Or check specific connectivity
+sudo -u dbsentinel /opt/db_sentinel/venv/bin/python -c "
+import oracledb
+conn = oracledb.connect(
+    user='your_username',
+    password='your_password',
+    dsn='your_host:1521/your_service'
+)
+print('✅ Connection successful')
+conn.close()
+"
+```
+
+-----
+
+## **STEP 5: Run Your First Comparison**
+
+### **5.1 Manual Test Run**
+
+```bash
+# Run a manual comparison test
+sudo systemctl start db-sentinel
+
+# Check the status
+sudo systemctl status db-sentinel
+
+# View real-time logs
+sudo journalctl -u db-sentinel -f
+```
+
+### **5.2 Check Output Files**
+
+```bash
+# View generated files
+ls -la /opt/db_sentinel/DB_Sentinel_*
+
+# Check comparison report
+sudo cat /opt/db_sentinel/DB_Sentinel_report/comparison_report_*.txt
+
+# Check SQL files (if differences found)
+ls -la /opt/db_sentinel/DB_Sentinel_sql/
+```
+
+-----
+
+## **STEP 6: Configure Scheduled Execution (Optional)**
+
+### **6.1 Enable Daily Scheduled Runs**
+
+```bash
+# Enable the timer for daily execution
+sudo systemctl enable db-sentinel.timer
+sudo systemctl start db-sentinel.timer
+
+# Check timer status
+sudo systemctl status db-sentinel.timer
+
+# List all timers to verify
+sudo systemctl list-timers db-sentinel*
+```
+
+### **6.2 Customize Schedule (Optional)**
+
+```bash
+# Edit the timer for different schedule
+sudo systemctl edit db-sentinel.timer
+```
+
+Add custom schedule:
+
+```ini
+[Timer]
+# Run every 6 hours instead of daily
+OnCalendar=*-*-* 00,06,12,18:00:00
+```
+
+-----
+
+## **🔧 Configuration File Examples**
+
+### **Example 1: Single Table Comparison**
+
+```yaml
+tables:
+  - name: "customers"
+    schema: "sales"
+    primary_keys: ["customer_id"]
+    exclude_columns: ["last_updated", "sync_timestamp"]
+    where_clause: "status = 'ACTIVE'"
+```
+
+### **Example 2: Multiple Tables**
+
+```yaml
+tables:
+  - name: "customers" 
+    schema: "sales"
+    primary_keys: ["customer_id"]
+    exclude_columns: ["last_updated"]
+    
+  - name: "orders"
+    schema: "sales" 
+    primary_keys: ["order_id"]
+    exclude_columns: ["created_timestamp", "modified_by"]
+    
+  - name: "products"
+    schema: "inventory"
+    primary_keys: ["product_id"]
+    exclude_columns: []
+```
+
+### **Example 3: Golden Gate Replicated Table**
+
+```yaml
+tables:
+  - name: "transactions"
+    schema: "finance"
+    primary_keys: ["transaction_id"]
+    exclude_columns:
+      - "GG_TIMESTAMP"      # Golden Gate timestamp
+      - "GG_OPERATION"      # Golden Gate operation
+      - "LAST_UPDATED"      # May differ due to replication lag
+      - "CREATED_BY"        # May show replication user
+    where_clause: "transaction_date >= DATE '2024-01-01'"
+```
+
+-----
+
+## **🛠️ Troubleshooting Common Issues**
+
+### **Issue 1: Connection Timeout**
+
+```bash
+# Edit config to increase timeout
+sudo nano /opt/db_sentinel/config.yaml
+
+# Change these values:
+databases:
+  source:
+    connect_timeout: 60     # Increase from 30
+    query_timeout: 600      # Increase from 300
+```
+
+### **Issue 2: Memory Issues**
+
+```bash
+# Reduce batch size in config
+comparison:
+  batch_size: 5000          # Reduce from 10000
+  max_workers: 1            # Reduce from 4
+```
+
+### **Issue 3: Permission Denied**
+
+```bash
+# Fix file permissions
+sudo chown -R dbsentinel:dbsentinel /opt/db_sentinel
+sudo chmod 750 /opt/db_sentinel
+sudo chmod 640 /opt/db_sentinel/*.py
+sudo chmod 600 /opt/db_sentinel/config.yaml
+```
+
+### **Issue 4: Oracle Client Not Found**
+
+```bash
+# Install Oracle Instant Client (if needed)
+sudo yum install oracle-instantclient-basic oracle-instantclient-devel
+# OR
+sudo apt-get install oracle-instantclient-basic oracle-instantclient-devel
+
+# Set environment variables
+echo 'export ORACLE_HOME=/usr/lib/oracle/21/client64' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
+```
+
+-----
+
+## **📊 Monitoring and Maintenance**
+
+### **View Logs**
+
+```bash
+# Real-time logs
+sudo journalctl -u db-sentinel -f
+
+# Last 100 lines
+sudo journalctl -u db-sentinel -n 100
+
+# Logs for specific date
+sudo journalctl -u db-sentinel --since "2024-01-15"
+```
+
+### **Manual Commands**
+
+```bash
+# Start comparison manually
+sudo systemctl start db-sentinel
+
+# Check service status
+sudo systemctl status db-sentinel
+
+# Stop scheduled runs
+sudo systemctl stop db-sentinel.timer
+
+# Run health check
+sudo -u dbsentinel /opt/db_sentinel/health_check.sh
+
+# View configuration
+sudo cat /opt/db_sentinel/config.yaml
+```
+
+### **File Locations**
+
+```bash
+# Application files
+/opt/db_sentinel/
+
+# Configuration  
+/opt/db_sentinel/config.yaml
+
+# Environment variables (passwords)
+/opt/db_sentinel/.env
+
+# Generated SQL files
+/opt/db_sentinel/DB_Sentinel_sql/
+
+# Reports
+/opt/db_sentinel/DB_Sentinel_report/
+
+# Audit logs
+/opt/db_sentinel/DB_Sentinel_audit/
+
+# Application logs
+/opt/db_sentinel/DB_Sentinel_logs/
+```
+
+-----
+
+## **✅ Installation Verification Checklist**
+
+- [ ] Python 3.8+ installed and working
+- [ ] All DB Sentinel files copied to `/opt/db_sentinel/`
+- [ ] Database connection details updated in `config.yaml`
+- [ ] Tables configured for comparison
+- [ ] Environment variables set securely
+- [ ] Connectivity test passed
+- [ ] First manual comparison completed successfully
+- [ ] Output files generated in expected directories
+- [ ] Systemd service created and working
+- [ ] Scheduled execution configured (if desired)
+- [ ] Log rotation configured
+- [ ] Health check script working
+
+-----
+
+## **🎯 Quick Reference Commands**
+
+```bash
+# Installation
+./deploy_db_sentinel.sh
+
+# Configuration
+sudo nano /opt/db_sentinel/config.yaml
+
+# Test connectivity
+sudo -u dbsentinel /opt/db_sentinel/health_check.sh
+
+# Run comparison
+sudo systemctl start db-sentinel
+
+# View logs
+sudo journalctl -u db-sentinel -f
+
+# Enable daily runs
+sudo systemctl enable --now db-sentinel.timer
+
+# Check status
+sudo systemctl status db-sentinel
+```
+
+You’re now ready to run DB Sentinel on your Linux stress environment! Start with the automated installation script and then customize the configuration for your specific database setup.
